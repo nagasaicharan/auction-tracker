@@ -45,6 +45,8 @@ cp .env.example .env
 | Variable | Required | Description |
 | --- | --- | --- |
 | `PORT` | No | API server port. Defaults to `3001`. |
+| `NODE_ENV` | No | Set to `production` to make Express serve the built client from `dist/`. Defaults to `development`. |
+| `DB_PATH` | No | Path to the SQLite database file. Defaults to `./auction-tracker.db`. In containerized deploys, point this at a persistent volume (e.g. `/data/auction-tracker.db`). |
 | `NELLIS_COOKIES` | No | Optional bootstrap cookie string for auth session. In normal usage, login from UI and let the app manage session cookies. |
 
 Security notes:
