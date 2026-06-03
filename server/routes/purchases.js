@@ -52,9 +52,15 @@ router.get('/', (req, res) => {
 // GET /api/purchases/summary — aggregate stats
 router.get('/summary', (_req, res) => {
   const stats = db.prepare(`
+    WITH normalized AS (
+      SELECT
+        *,
+        CASE WHEN total_cost > 0 THEN total_cost ELSE purchase_price END as effective_cost
+      FROM purchases
+    )
     SELECT
       COUNT(*) as total_items,
-      COALESCE(SUM(CASE WHEN total_cost > 0 THEN total_cost ELSE purchase_price END), 0) as total_spent,
+      COALESCE(SUM(effective_cost), 0) as total_spent,
       COUNT(CASE WHEN status = 'received' THEN 1 END) as received_count,
       COUNT(CASE WHEN status = 'inspected' THEN 1 END) as inspected_count,
       COUNT(CASE WHEN status = 'returned' THEN 1 END) as returned_count,
@@ -63,9 +69,26 @@ router.get('/summary', (_req, res) => {
       COUNT(CASE WHEN status = 'sold_fb' THEN 1 END) as sold_fb_count,
       COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count,
       COALESCE(SUM(CASE WHEN status = 'sold_fb' THEN fb_sold_price ELSE 0 END), 0) as total_fb_revenue,
-      COALESCE(SUM(CASE WHEN status = 'sold_fb' THEN fb_sold_price - (CASE WHEN total_cost > 0 THEN total_cost ELSE purchase_price END) ELSE 0 END), 0) as total_profit,
-      COALESCE(SUM(CASE WHEN status = 'returned' THEN (CASE WHEN total_cost > 0 THEN total_cost ELSE purchase_price END) ELSE 0 END), 0) as returned_cost
-    FROM purchases
+      COALESCE(SUM(CASE WHEN status = 'sold_fb' THEN fb_sold_price - effective_cost ELSE 0 END), 0) as total_profit,
+      COALESCE(SUM(CASE WHEN status = 'returned' THEN effective_cost ELSE 0 END), 0) as returned_cost,
+      COALESCE(SUM(CASE WHEN status <> 'returned' THEN effective_cost ELSE 0 END), 0) as effective_spent_after_returns,
+      COUNT(CASE WHEN status <> 'returned' THEN 1 END) as non_returned_items,
+      COUNT(CASE WHEN status IN ('keep', 'sell_fb', 'sold_fb') THEN 1 END) as retained_count,
+      COALESCE(SUM(CASE WHEN status IN ('keep', 'sell_fb', 'sold_fb') THEN effective_cost ELSE 0 END), 0) as retained_cost,
+      CASE
+        WHEN COUNT(*) > 0 THEN ROUND((COUNT(CASE WHEN status = 'returned' THEN 1 END) * 100.0) / COUNT(*), 2)
+        ELSE 0
+      END as return_rate_pct,
+      CASE
+        WHEN COUNT(CASE WHEN status IN ('keep', 'sell_fb', 'sold_fb') THEN 1 END) > 0
+        THEN ROUND(
+          COALESCE(SUM(CASE WHEN status IN ('keep', 'sell_fb', 'sold_fb') THEN effective_cost ELSE 0 END), 0)
+          / COUNT(CASE WHEN status IN ('keep', 'sell_fb', 'sold_fb') THEN 1 END),
+          2
+        )
+        ELSE 0
+      END as avg_retained_cost
+    FROM normalized
   `).get();
 
   res.json(stats);
@@ -74,20 +97,33 @@ router.get('/summary', (_req, res) => {
 // GET /api/purchases/trips — per-trip analytics grouped by purchase_date
 router.get('/trips', (_req, res) => {
   const trips = db.prepare(`
+    WITH normalized AS (
+      SELECT
+        *,
+        CASE WHEN total_cost > 0 THEN total_cost ELSE purchase_price END as effective_cost
+      FROM purchases
+    )
     SELECT
       DATE(purchase_date) as trip_date,
       COUNT(*) as total_items,
-      COALESCE(SUM(CASE WHEN total_cost > 0 THEN total_cost ELSE purchase_price END), 0) as total_spent,
+      COALESCE(SUM(effective_cost), 0) as total_spent,
       COUNT(CASE WHEN status = 'returned' THEN 1 END) as returned_count,
-      COALESCE(SUM(CASE WHEN status = 'returned' THEN (CASE WHEN total_cost > 0 THEN total_cost ELSE purchase_price END) ELSE 0 END), 0) as returned_cost,
+      COALESCE(SUM(CASE WHEN status = 'returned' THEN effective_cost ELSE 0 END), 0) as returned_cost,
       COUNT(CASE WHEN status = 'keep' THEN 1 END) as keep_count,
       COUNT(CASE WHEN status = 'sell_fb' THEN 1 END) as sell_fb_count,
       COUNT(CASE WHEN status = 'sold_fb' THEN 1 END) as sold_fb_count,
       COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count,
       COUNT(CASE WHEN status = 'received' THEN 1 END) as received_count,
       COALESCE(SUM(CASE WHEN status = 'sold_fb' THEN fb_sold_price ELSE 0 END), 0) as fb_revenue,
-      COALESCE(SUM(CASE WHEN status = 'sold_fb' THEN fb_sold_price - (CASE WHEN total_cost > 0 THEN total_cost ELSE purchase_price END) ELSE 0 END), 0) as net_profit
-    FROM purchases
+      COALESCE(SUM(CASE WHEN status = 'sold_fb' THEN fb_sold_price - effective_cost ELSE 0 END), 0) as net_profit,
+      COALESCE(SUM(CASE WHEN status <> 'returned' THEN effective_cost ELSE 0 END), 0) as effective_spent_after_returns,
+      COUNT(CASE WHEN status IN ('keep', 'sell_fb', 'sold_fb') THEN 1 END) as retained_count,
+      COALESCE(SUM(CASE WHEN status IN ('keep', 'sell_fb', 'sold_fb') THEN effective_cost ELSE 0 END), 0) as retained_cost,
+      CASE
+        WHEN COUNT(*) > 0 THEN ROUND((COUNT(CASE WHEN status = 'returned' THEN 1 END) * 100.0) / COUNT(*), 2)
+        ELSE 0
+      END as return_rate_pct
+    FROM normalized
     WHERE purchase_date IS NOT NULL
     GROUP BY DATE(purchase_date)
     ORDER BY trip_date DESC

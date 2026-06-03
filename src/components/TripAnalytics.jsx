@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, Package, TrendingUp, TrendingDown } from 'lucide-react';
 
+function money(value) {
+  return Number(value || 0);
+}
+
 export default function TripAnalytics({ trips, activeTripDate, onSelectTrip }) {
   const [open, setOpen] = useState(false);
 
@@ -33,8 +37,10 @@ export default function TripAnalytics({ trips, activeTripDate, onSelectTrip }) {
                 <th className="px-3 py-2 text-left">Trip Date</th>
                 <th className="px-3 py-2 text-right">Items</th>
                 <th className="px-3 py-2 text-right">Spent</th>
+                <th className="px-3 py-2 text-right">Eff Spent</th>
                 <th className="px-3 py-2 text-right">Returns</th>
                 <th className="px-3 py-2 text-right">Return Cost</th>
+                <th className="px-3 py-2 text-right">Keep Cost</th>
                 <th className="px-3 py-2 text-right">Keeping</th>
                 <th className="px-3 py-2 text-right">Pending</th>
                 <th className="px-3 py-2 text-right">FB Sold</th>
@@ -45,9 +51,9 @@ export default function TripAnalytics({ trips, activeTripDate, onSelectTrip }) {
             <tbody>
               {trips.map(t => {
                 const isActive = activeTripDate === t.trip_date;
-                const returnRate = t.total_items > 0 ? Math.round((t.returned_count / t.total_items) * 100) : 0;
-                const pnlPositive = t.net_profit >= 0;
-                const unresolved = t.pending_count + t.received_count;
+                const returnRate = money(t.total_items) > 0 ? Math.round((money(t.returned_count) / money(t.total_items)) * 100) : 0;
+                const pnlPositive = money(t.net_profit) >= 0;
+                const unresolved = money(t.pending_count) + money(t.received_count);
                 const PnlIcon = pnlPositive ? TrendingUp : TrendingDown;
 
                 return (
@@ -68,7 +74,10 @@ export default function TripAnalytics({ trips, activeTripDate, onSelectTrip }) {
                     </td>
                     <td className="px-3 py-2 text-right font-medium">{t.total_items}</td>
                     <td className="px-3 py-2 text-right text-orange-600 font-medium">
-                      ${t.total_spent.toFixed(2)}
+                      ${money(t.total_spent).toFixed(2)}
+                    </td>
+                    <td className="px-3 py-2 text-right text-blue-600 font-medium">
+                      ${money(t.effective_spent_after_returns).toFixed(2)}
                     </td>
                     <td className="px-3 py-2 text-right">
                       <span className={returnRate > 20 ? 'text-red-600 font-semibold' : 'text-gray-600'}>
@@ -76,7 +85,10 @@ export default function TripAnalytics({ trips, activeTripDate, onSelectTrip }) {
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right text-red-500 font-medium">
-                      {t.returned_cost > 0 ? `-$${t.returned_cost.toFixed(2)}` : '—'}
+                      {money(t.returned_cost) > 0 ? `-$${money(t.returned_cost).toFixed(2)}` : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right text-pink-700">
+                      {money(t.retained_cost) > 0 ? `$${money(t.retained_cost).toFixed(2)}` : '—'}
                     </td>
                     <td className="px-3 py-2 text-right text-pink-600">{t.keep_count || '—'}</td>
                     <td className="px-3 py-2 text-right text-yellow-600">
@@ -84,12 +96,12 @@ export default function TripAnalytics({ trips, activeTripDate, onSelectTrip }) {
                     </td>
                     <td className="px-3 py-2 text-right text-emerald-600">{t.sold_fb_count || '—'}</td>
                     <td className="px-3 py-2 text-right text-emerald-600">
-                      {t.fb_revenue > 0 ? `$${t.fb_revenue.toFixed(2)}` : '—'}
+                      {money(t.fb_revenue) > 0 ? `$${money(t.fb_revenue).toFixed(2)}` : '—'}
                     </td>
                     <td className="px-3 py-2 text-right">
                       <span className={`flex items-center justify-end gap-0.5 font-bold ${pnlPositive ? 'text-emerald-600' : 'text-red-600'}`}>
                         <PnlIcon size={11} />
-                        {pnlPositive ? '+' : ''}${t.net_profit.toFixed(2)}
+                        {pnlPositive ? '+' : ''}${money(t.net_profit).toFixed(2)}
                       </span>
                     </td>
                   </tr>

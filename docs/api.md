@@ -101,6 +101,13 @@ Response includes:
 - Status counts (`received_count`, `inspected_count`, etc.)
 - `total_fb_revenue`
 - `total_profit`
+- `returned_cost`
+- `effective_spent_after_returns`
+- `non_returned_items`
+- `retained_count` (items not returned and currently marked `keep`/`sell_fb`/`sold_fb`)
+- `retained_cost` (cost basis for retained items)
+- `return_rate_pct`
+- `avg_retained_cost`
 
 ### PATCH /purchases/:id
 
