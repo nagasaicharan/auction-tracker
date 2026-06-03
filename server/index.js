@@ -7,6 +7,7 @@ import purchasesRouter from './routes/purchases.js';
 import syncRouter from './routes/sync.js';
 import returnsRouter from './routes/returns.js';
 import authRouter from './routes/auth.js';
+import appointmentsRouter from './routes/appointments.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -19,6 +20,7 @@ app.use('/api/purchases', purchasesRouter);
 app.use('/api/sync', syncRouter);
 app.use('/api/returns', returnsRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/appointments', appointmentsRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

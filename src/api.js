@@ -49,6 +49,32 @@ export async function syncPurchases() {
   return res.json();
 }
 
+export async function fetchAppointments({ page = 0, size = 20 } = {}) {
+  const params = new URLSearchParams({ page, size });
+  const res = await fetch(`${API_BASE}/appointments?${params}`);
+  if (!res.ok) throw new Error('Failed to fetch appointments');
+  return res.json();
+}
+
+export async function fetchAppointmentSlots(appointmentId) {
+  const res = await fetch(`${API_BASE}/appointments/${appointmentId}/slots`);
+  if (!res.ok) throw new Error('Failed to fetch appointment slots');
+  return res.json();
+}
+
+export async function rescheduleAppointment(appointmentId, appointmentTime) {
+  const res = await fetch(`${API_BASE}/appointments/${appointmentId}/reschedule`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ appointmentTime }),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.error || 'Failed to reschedule appointment');
+  }
+  return res.json();
+}
+
 export async function submitReturnRequest(buyNowId, returnTypeId, returnReason) {
   const res = await fetch(`${API_BASE}/returns/${buyNowId}`, {
     method: 'POST',

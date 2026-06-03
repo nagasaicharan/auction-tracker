@@ -41,7 +41,7 @@ export async function fetchPurchasesList(cookies, page = 0, size = 30) {
 
   try {
     return JSON.parse(text);
-  } catch (e) {
+  } catch {
     // Might be HTML redirect page if session expired
     if (text.includes('<html') || text.includes('<!DOCTYPE')) {
       throw new Error('Nellis returned HTML instead of JSON — session expired. Update NELLIS_COOKIES in .env');
@@ -70,7 +70,7 @@ export async function fetchProductDetail(cookies, productId, titleSlug) {
 
   try {
     return JSON.parse(text);
-  } catch (e) {
+  } catch {
     if (text.includes('<html') || text.includes('<!DOCTYPE')) {
       throw new Error(`HTML response for product ${productId} — session expired`);
     }
@@ -123,7 +123,7 @@ export async function fetchReceiptDetail(cookies, buyNowId) {
 
   try {
     return JSON.parse(text);
-  } catch (e) {
+  } catch {
     if (text.includes('<html') || text.includes('<!DOCTYPE')) {
       throw new Error(`HTML response for receipt ${buyNowId} — session expired`);
     }
@@ -192,3 +192,110 @@ export async function submitReturn(cookies, buyNowId, returnTypeId, returnReason
   const text = await res.text();
   throw new Error(`Return request failed: ${res.status} — ${text.slice(0, 300)}`);
 }
+
+function normalizeAppointmentTimeValue(appointmentTime) {
+  if (!appointmentTime) return null;
+  const date = new Date(appointmentTime);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+/**
+ * Fetch appointments from the Nellis dashboard.
+ */
+export async function fetchAppointments(cookies, page = 0, size = 20) {
+  const paginationParam = encodeURIComponent(`s:${size},n:${page}`);
+  const url = `${NELLIS_BASE}/dashboard/appointments?_p=${paginationParam}&_data=routes%2Fdashboard.appointments`;
+  const res = await fetch(url, {
+    headers: {
+      ...DEFAULT_HEADERS,
+      'cookie': cookies,
+      'referer': `${NELLIS_BASE}/dashboard/appointments`,
+    },
+  });
+  const text = await res.text();
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch appointments: ${res.status} - ${text.slice(0, 300)}`);
+  }
+
+  if (!text || text.trim().length === 0) {
+    throw new Error('Empty response from Nellis appointments API.');
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (text.includes('<html') || text.includes('<!DOCTYPE')) {
+      throw new Error('Nellis appointments endpoint returned HTML — session may be expired.');
+    }
+    throw new Error(`Invalid JSON from Nellis appointments: ${text.slice(0, 300)}`);
+  }
+}
+
+/**
+ * Fetch details and available slots for a specific appointment.
+ */
+export async function fetchAppointmentReschedule(cookies, appointmentId) {
+  const url = `${NELLIS_BASE}/dashboard/appointments/${appointmentId}/reschedule?_data=routes%2Fdashboard.appointments_.%24appointmentId_.reschedule`;
+  const res = await fetch(url, {
+    headers: {
+      ...DEFAULT_HEADERS,
+      'cookie': cookies,
+      'referer': `${NELLIS_BASE}/dashboard/appointments/${appointmentId}/reschedule`,
+    },
+  });
+  const text = await res.text();
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch appointment ${appointmentId} reschedule details: ${res.status} - ${text.slice(0, 300)}`);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (text.includes('<html') || text.includes('<!DOCTYPE')) {
+      throw new Error(`Nellis returned HTML for appointment ${appointmentId} — session may be expired.`);
+    }
+    throw new Error(`Invalid JSON for appointment ${appointmentId}: ${text.slice(0, 300)}`);
+  }
+}
+
+/**
+ * Submit an appointment reschedule request.
+ * appointmentTime can be any date string supported by JS Date; function normalizes to ISO.
+ */
+export async function submitAppointmentReschedule(cookies, appointmentId, appointmentTime) {
+  const isoTime = normalizeAppointmentTimeValue(appointmentTime);
+  if (!isoTime) {
+    throw new Error('Invalid appointmentTime provided');
+  }
+
+  const url = `${NELLIS_BASE}/dashboard/appointments/${appointmentId}/reschedule?_data=routes%2Fdashboard.appointments_.%24appointmentId_.reschedule`;
+  const body = new URLSearchParams({
+    AppointmentTime: isoTime,
+    Intent: '',
+    AppointmentId: '',
+  });
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      ...DEFAULT_HEADERS,
+      'cookie': cookies,
+      'origin': NELLIS_BASE,
+      'referer': `${NELLIS_BASE}/dashboard/appointments/${appointmentId}/reschedule`,
+      'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
+    },
+    body: body.toString(),
+  });
+
+  if (res.status === 204 || res.status === 200) {
+    return { success: true, appointmentTime: isoTime };
+  }
+
+  const text = await res.text();
+  throw new Error(`Reschedule failed for ${appointmentId}: ${res.status} - ${text.slice(0, 300)}`);
+}
+
+export { normalizeAppointmentTimeValue };
