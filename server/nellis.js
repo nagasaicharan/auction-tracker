@@ -1,4 +1,5 @@
 const NELLIS_BASE = 'https://nellisauction.com';
+const NELLIS_WEB_BASE = 'https://www.nellisauction.com';
 
 const DEFAULT_HEADERS = {
   'accept': '*/*',
@@ -12,11 +13,11 @@ const DEFAULT_HEADERS = {
   'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
 };
 
-function getHeaders(cookies) {
+function getHeaders(cookies, refererPath = '/dashboard/purchases') {
   return {
     ...DEFAULT_HEADERS,
     'cookie': cookies,
-    'referer': `${NELLIS_BASE}/dashboard/purchases`,
+    'referer': `${NELLIS_BASE}${refererPath}`,
   };
 }
 
@@ -48,6 +49,133 @@ export async function fetchPurchasesList(cookies, page = 0, size = 30) {
     }
     throw new Error(`Invalid JSON from Nellis: ${text.slice(0, 300)}`);
   }
+}
+
+export async function fetchSearchResults(cookies, query = {}) {
+  const params = new URLSearchParams();
+  const normalizedQuery = new URLSearchParams();
+  normalizedQuery.set('_data', 'routes/search');
+
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null || value === '') continue;
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item === undefined || item === null || item === '') return;
+        params.append(key, String(item));
+      });
+    } else {
+      params.set(key, String(value));
+    }
+  }
+
+  for (const [key, value] of params.entries()) {
+    normalizedQuery.append(key, value);
+  }
+
+  async function executeSearchRequest(queryObject) {
+    const requestQuery = new URLSearchParams(queryObject);
+    const url = `${NELLIS_WEB_BASE}/search?${requestQuery.toString()}`;
+    const searchRes = await fetch(url, {
+      headers: {
+        ...DEFAULT_HEADERS,
+        accept: 'application/json',
+        'cookie': cookies,
+        'origin': NELLIS_WEB_BASE,
+        'referer': `${NELLIS_WEB_BASE}/search`,
+        'sec-fetch-site': 'same-site',
+      },
+    });
+    const text = await searchRes.text();
+    return { searchRes, text };
+  }
+
+  const primary = await executeSearchRequest(normalizedQuery);
+  let res = primary.searchRes;
+  let text = primary.text;
+
+  if (!res.ok && res.status === 403 && text.includes('Unexpected Server Error')) {
+    const warmup = new URLSearchParams(normalizedQuery);
+    warmup.set('_data', 'root');
+    await executeSearchRequest(warmup);
+    const retryQuery = new URLSearchParams(normalizedQuery);
+    retryQuery.set('_data', 'routes/search');
+    const retry = await executeSearchRequest(retryQuery);
+    res = retry.searchRes;
+    text = retry.text;
+  }
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch search results: ${res.status} - ${text.slice(0, 300)}`);
+  }
+
+  if (!text || text.trim().length === 0) {
+    throw new Error('Empty response from Nellis search API.');
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (text.includes('<html') || text.includes('<!DOCTYPE')) {
+      throw new Error('Nellis search endpoint returned HTML — session may be expired.');
+    }
+    throw new Error(`Invalid JSON from Nellis search: ${text.slice(0, 300)}`);
+  }
+}
+
+function parseCurrency(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function normalizeSearchItem(rawItem) {
+  if (!rawItem || !rawItem.id) return null;
+
+  const currentPrice = parseCurrency(rawItem.currentPrice);
+  const retailPrice = parseCurrency(rawItem.retailPrice);
+  const margin = (retailPrice !== null && currentPrice !== null)
+    ? Number((retailPrice - currentPrice).toFixed(2))
+    : null;
+  const marginPercent = (retailPrice && retailPrice > 0 && currentPrice !== null)
+    ? Number((((retailPrice - currentPrice) / retailPrice) * 100).toFixed(2))
+    : null;
+  const image = rawItem.photos?.[0]?.url || null;
+  const closeAt = rawItem.closeTime?.value || rawItem.closeTime || null;
+  const photos = Array.isArray(rawItem.photos) ? rawItem.photos.map((photo) => photo?.url).filter(Boolean) : [];
+  const grade = rawItem.grade || null;
+
+  return {
+    id: rawItem.id,
+    title: rawItem.title || 'Untitled',
+    inventoryNumber: rawItem.inventoryNumber || null,
+    image,
+    photos,
+    retailPrice,
+    currentPrice,
+    bidCount: rawItem.bidCount || 0,
+    bidderCount: rawItem.bidderCount || 0,
+    closeTime: closeAt,
+    isClosed: Boolean(rawItem.isClosed),
+    marketStatus: rawItem.marketStatus || null,
+    locationName: rawItem.location?.name || null,
+    nextBid: parseCurrency(rawItem.userState?.nextBid),
+    canBid: Boolean(rawItem.userState?.isAllowedToBid),
+    isWinning: Boolean(rawItem.userState?.isWinning),
+    notes: rawItem.notes || null,
+    watchlistCount: rawItem.watchlistCount || 0,
+    extensionInterval: rawItem.extensionInterval || null,
+    projectExtended: Boolean(rawItem.projectExtended),
+    notReturnable: Boolean(rawItem.notReturnable),
+    valueMargin: margin,
+    valueMarginPercent: marginPercent,
+    rating: parseCurrency(grade?.rating),
+    gradeCategory: grade?.conditionType?.description || null,
+    damageType: grade?.damageType?.description || null,
+    functionalType: grade?.functionalType?.description || null,
+    packageType: grade?.packageType?.description || null,
+    missingPartsType: grade?.missingPartsType?.description || null,
+    assemblyType: grade?.assemblyType?.description || null,
+  };
 }
 
 /**
@@ -296,6 +424,53 @@ export async function submitAppointmentReschedule(cookies, appointmentId, appoin
 
   const text = await res.text();
   throw new Error(`Reschedule failed for ${appointmentId}: ${res.status} - ${text.slice(0, 300)}`);
+}
+
+export async function placeBid(cookies, productId, bid, recaptchaToken = null) {
+  const url = 'https://www.nellisauction.com/api/bids';
+  const normalizedBid = Number(bid);
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      ...DEFAULT_HEADERS,
+      'cookie': cookies,
+      'origin': NELLIS_BASE,
+      'referer': `${NELLIS_BASE}/`,
+      'accept': 'application/json',
+      'content-type': 'application/json',
+      'sec-fetch-site': 'same-site',
+    },
+    body: JSON.stringify({
+      productId: Number(productId),
+      bid: normalizedBid,
+      recaptchaToken: recaptchaToken || null,
+    }),
+  });
+
+  const text = await res.text();
+  let responsePayload = null;
+  if (text) {
+    try {
+      responsePayload = JSON.parse(text);
+    } catch {
+      responsePayload = text;
+    }
+  }
+
+  if (!res.ok) {
+    return {
+      success: false,
+      status: res.status,
+      response: responsePayload,
+      message:
+        typeof responsePayload === 'string'
+          ? responsePayload.slice(0, 500)
+          : responsePayload?.message || responsePayload?.error || 'Bid request was rejected',
+    };
+  }
+
+  return { success: true, status: res.status, response: responsePayload || null };
 }
 
 export { normalizeAppointmentTimeValue };

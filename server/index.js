@@ -8,6 +8,8 @@ import syncRouter from './routes/sync.js';
 import returnsRouter from './routes/returns.js';
 import authRouter from './routes/auth.js';
 import appointmentsRouter from './routes/appointments.js';
+import bidsRouter from './routes/bids.js';
+import searchRouter from './routes/search.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -21,6 +23,8 @@ app.use('/api/sync', syncRouter);
 app.use('/api/returns', returnsRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/appointments', appointmentsRouter);
+app.use('/api/bids', bidsRouter);
+app.use('/api/search', searchRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

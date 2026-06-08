@@ -88,6 +88,58 @@ export async function submitReturnRequest(buyNowId, returnTypeId, returnReason) 
   return res.json();
 }
 
+export async function testBid({ productId, bid, recaptchaToken }) {
+  const res = await fetch(`${API_BASE}/bids/playground`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      productId,
+      bid,
+      recaptchaToken,
+    }),
+  });
+  const text = await res.text();
+  let data = null;
+
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text ? { raw: text } : null;
+  }
+
+  if (!res.ok) {
+    const message = data?.message || data?.error || `Bid test failed (${res.status})`;
+    const err = new Error(message);
+    err.payload = data;
+    throw err;
+  }
+
+  return data;
+}
+
+export async function searchItems(filters = {}) {
+  const params = new URLSearchParams();
+
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item === undefined || item === null || item === '') return;
+        params.append(key, String(item));
+      });
+    } else {
+      params.set(key, String(value));
+    }
+  });
+
+  const res = await fetch(`${API_BASE}/search?${params.toString()}`);
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.error || 'Search request failed');
+  }
+  return res.json();
+}
+
 export async function getAuthStatus() {
   const res = await fetch(`${API_BASE}/auth/status`);
   if (!res.ok) throw new Error('Failed to check auth');

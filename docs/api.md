@@ -196,6 +196,49 @@ Possible errors:
 - 401: not logged in
 - 500: sync/remote API error
 
+## Search
+
+### GET /search
+
+Searches live Nellis auction listings using your stored Nellis session and returns current bid-ready items.
+
+Query parameters (optional):
+
+- `Location Name` (string) — preferred location filter (example: `Delran`)
+- `search` (string) — keyword filter
+- `MarketStatus` (`open` recommended)
+- Any additional filter keys supported by Nellis can be passed through as query params.
+
+Response:
+
+```json
+{
+  "items": [
+    {
+      "id": 110000000,
+      "title": "Example item",
+      "inventoryNumber": "ABC123",
+      "image": "https://...",
+      "retailPrice": 120,
+      "currentPrice": 45,
+      "valueMargin": 75,
+      "valueMarginPercent": 62.5,
+      "nextBid": 46,
+      "bidCount": 4,
+      "bidderCount": 2,
+      "closeTime": "2026-06-04T00:00:00.000Z",
+      "marketStatus": "open",
+      "rating": 4.8,
+      "canBid": true
+    }
+  ],
+  "searchResultsCount": 500,
+  "selectedFilters": [],
+  "filterCount": 0,
+  "currentShoppingLocation": {}
+}
+```
+
 ## Returns
 
 ### POST /returns/:buyNowId

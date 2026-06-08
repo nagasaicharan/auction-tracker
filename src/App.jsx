@@ -7,7 +7,9 @@ import AppointmentList from './components/AppointmentList';
 import SyncButton from './components/SyncButton';
 import LoginPage from './components/LoginPage';
 import TripAnalytics from './components/TripAnalytics';
-import { CalendarClock, LogOut, ShoppingCart } from 'lucide-react';
+import { CalendarClock, Gavel, LogOut, Search, ShoppingCart } from 'lucide-react';
+import BidPlayground from './components/BidPlayground';
+import SearchAuctionDashboard from './components/SearchAuctionDashboard';
 import { getAuthStatus, logout } from './api.js';
 
 function App() {
@@ -75,14 +77,14 @@ function MainApp({ onLogout }) {
           <div className="flex items-center gap-3">
             {activeTab === 'purchases' ? (
               <SyncButton onSync={sync} syncing={syncing} />
-            ) : (
+            ) : activeTab === 'appointments' ? (
               <button
                 onClick={loadAppointments}
                 className="text-sm bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100"
               >
                 Refresh appointments
               </button>
-            )}
+            ) : null}
             <button
               onClick={onLogout}
               className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-400 px-3 py-1.5 rounded-lg transition-colors"
@@ -117,6 +119,28 @@ function MainApp({ onLogout }) {
             <CalendarClock size={14} />
             Appointments
           </button>
+          <button
+            onClick={() => setActiveTab('search')}
+            className={`text-sm px-3 py-2 rounded-lg border flex items-center gap-1.5 transition-colors ${
+              activeTab === 'search'
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+            }`}
+          >
+            <Search size={14} />
+            Search & Bid
+          </button>
+          <button
+            onClick={() => setActiveTab('bids')}
+            className={`text-sm px-3 py-2 rounded-lg border flex items-center gap-1.5 transition-colors ${
+              activeTab === 'bids'
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+            }`}
+          >
+            <Gavel size={14} />
+            Bid Playground
+          </button>
         </div>
 
         {activeTab === 'purchases' ? (
@@ -145,7 +169,7 @@ function MainApp({ onLogout }) {
               onBulkUpdate={bulkUpdate}
             />
           </>
-        ) : (
+        ) : activeTab === 'appointments' ? (
           <>
             <div className="mb-4 text-sm text-gray-600">
               Want any date? Enter it directly in your local timezone and submit.
@@ -170,6 +194,10 @@ function MainApp({ onLogout }) {
               onReschedule={reschedule}
             />
           </>
+        ) : activeTab === 'search' ? (
+          <SearchAuctionDashboard />
+        ) : (
+          <BidPlayground />
         )}
       </main>
     </div>
