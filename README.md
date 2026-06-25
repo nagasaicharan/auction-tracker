@@ -11,6 +11,9 @@ Auction Tracker is a full-stack app for tracking Nellis Auction purchases after 
 - Bulk status updates for selected items
 - Return submission endpoint for eligible orders
 - Summary metrics for spend, sold revenue, and profit
+- Nellis website saved searches plus local live-search presets
+- Lost-auction relist matching with throttled background scans and local cache
+- Scheduled bids for live auction items, executed server-side near auction close
 
 ## Tech Stack
 
@@ -53,6 +56,7 @@ Security notes:
 
 - Never commit `.env`.
 - Rotate Nellis credentials/cookies if you suspect exposure.
+- For scheduled bidding on Dokploy, configure `DB_PATH=/data/auction-tracker.db` on a persistent volume and run one app replica so only one bid worker is active.
 
 ## Install
 
@@ -94,6 +98,16 @@ The backend is mounted at `/api`.
 - `PATCH /api/purchases/bulk/status`
 - `POST /api/sync`
 - `POST /api/returns/:buyNowId`
+- `GET /api/bids/scheduled`
+- `POST /api/bids/scheduled`
+- `POST /api/bids/scheduled/:id/cancel`
+- `GET /api/saved-searches`
+- `POST /api/saved-searches`
+- `PATCH /api/saved-searches/:id`
+- `DELETE /api/saved-searches/:id`
+- `GET /api/lost-auctions/live-matches`
+- `GET /api/lost-auctions/scan`
+- `POST /api/lost-auctions/scan`
 
 Detailed request/response docs are in `docs/api.md`.
 

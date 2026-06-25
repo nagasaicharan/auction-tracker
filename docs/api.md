@@ -239,6 +239,270 @@ Response:
 }
 ```
 
+## Saved Searches
+
+### GET /saved-searches
+
+Lists Nellis website saved searches plus locally saved Auction Tracker live-search presets. Website searches are read-only and use the saved search text as an open-auction keyword preset.
+
+Response 200:
+
+```json
+{
+  "searches": [
+    {
+      "id": 1,
+      "name": "Delran · tools · open",
+      "filters": {
+        "search": "tools",
+        "Location Name": "Delran",
+        "MarketStatus": "open"
+      },
+      "sortBy": "valueMarginPercent",
+      "secondarySortBy": "",
+      "onlyNoDamage": false,
+      "onlyMinorDamage": false,
+      "autoRefresh": true,
+      "pollSeconds": 30,
+      "lastRunAt": null,
+      "lastResultCount": null,
+      "source": "local",
+      "readOnly": false
+    },
+    {
+      "id": "nellis-1956392",
+      "name": "Chime",
+      "filters": {
+        "search": "Chime",
+        "MarketStatus": "open"
+      },
+      "sortBy": "valueMarginPercent",
+      "source": "nellis",
+      "readOnly": true,
+      "nellisId": 1956392
+    }
+  ],
+  "websiteTotal": 34
+}
+```
+
+### POST /saved-searches
+
+Creates a saved search preset.
+
+Request body:
+
+```json
+{
+  "name": "Delran · tools · open",
+  "filters": {
+    "search": "tools",
+    "Location Name": "Delran",
+    "MarketStatus": "open"
+  },
+  "sortBy": "valueMarginPercent",
+  "secondarySortBy": "",
+  "onlyNoDamage": false,
+  "onlyMinorDamage": false,
+  "autoRefresh": true,
+  "pollSeconds": 30
+}
+```
+
+Responses:
+
+- 201: `{ "search": { ... } }`
+- 400: invalid payload
+
+### PATCH /saved-searches/:id
+
+Updates an existing saved search. Uses the same body shape as `POST /saved-searches`.
+
+Responses:
+
+- 200: `{ "search": { ... } }`
+- 404: saved search not found
+
+### POST /saved-searches/:id/run
+
+Updates local run metadata for a saved search.
+
+Request body:
+
+```json
+{
+  "resultCount": 12
+}
+```
+
+### DELETE /saved-searches/:id
+
+Deletes a saved search.
+
+Responses:
+
+- 204: deleted
+- 404: saved search not found
+
+## Lost Auctions
+
+### GET /lost-auctions/live-matches
+
+Returns cached lost-auction relist matches from local SQLite. This endpoint does not call Nellis; start or refresh the background cache with `POST /lost-auctions/scan`.
+
+Query parameters:
+
+- `limit` (number, default `100`, max `500`) — number of cached lost rows to return
+- `locationName` (string, optional) — limits current open matches to a Nellis location
+- `onlyMatches` (`1`/`true`, optional) — only return lost rows with at least one current match
+
+Response 200:
+
+```json
+{
+  "rows": [
+    {
+      "lostItem": {
+        "id": 110000000,
+        "title": "Example item",
+        "image": "https://...",
+        "lastSoldPrice": 45,
+        "closeTime": "2026-06-04T00:00:00.000Z",
+        "locationName": "Delran"
+      },
+      "search": "Example item",
+      "matches": [
+        {
+          "id": 120000000,
+          "title": "Example item",
+          "currentPrice": 20,
+          "nextBid": 21,
+          "closeTime": "2026-06-24T20:00:00.000Z",
+          "marketStatus": "open",
+          "canBid": true
+        }
+      ]
+    }
+  ],
+  "count": 1,
+  "scan": {
+    "status": "completed",
+    "processedCount": 414,
+    "totalLost": 414,
+    "matchedCount": 12,
+    "searchDelayMs": 3000
+  },
+  "cacheOnly": true,
+  "returnedAt": "2026-06-24T12:00:00.000Z"
+}
+```
+
+### GET /lost-auctions/scan
+
+Returns the current background scan status.
+
+### POST /lost-auctions/scan
+
+Starts a throttled background scan. The scan fetches lost-auction pages, searches current open auctions one lost item at a time, stores matches locally, and spaces Nellis search calls by `3000ms`.
+
+Request body:
+
+```json
+{
+  "locationName": "Delran"
+}
+```
+
+Responses:
+
+- 202: scan accepted
+- 409: scan already running
+
+## Bids
+
+### GET /bids/items/:productId
+
+Fetches one live auction item by Nellis product ID for scheduled bidding.
+
+Response 200:
+
+```json
+{
+  "item": {
+    "id": 114175533,
+    "title": "Example item",
+    "currentPrice": 45,
+    "nextBid": 46,
+    "closeTime": "2026-06-04T00:00:00.000Z",
+    "canBid": true
+  }
+}
+```
+
+### GET /bids/scheduled
+
+Lists scheduled bids. Requires an active Nellis session.
+
+Query parameters:
+
+- `status` (`all`, `pending`, `placed`, `failed`, `missed`, or `cancelled`; default `all`)
+
+Response 200:
+
+```json
+{
+  "bids": [
+    {
+      "id": 1,
+      "productId": 110000000,
+      "title": "Example item",
+      "imageUrl": "https://...",
+      "closeTime": "2026-06-04T00:00:00.000Z",
+      "scheduledFor": "2026-06-03T23:59:31.000Z",
+      "bidAmount": 46,
+      "status": "pending",
+      "attempts": 0,
+      "lastError": null
+    }
+  ]
+}
+```
+
+### POST /bids/scheduled
+
+Creates or updates the pending scheduled bid for a product. The bid worker submits exactly `bidAmount` when the item is about 29 seconds from closing, but only if the current next bid is not above `bidAmount`.
+
+Request body:
+
+```json
+{
+  "productId": 110000000,
+  "title": "Example item",
+  "imageUrl": "https://...",
+  "closeTime": "2026-06-04T00:00:00.000Z",
+  "bidAmount": 46
+}
+```
+
+Responses:
+
+- 201: `{ "bid": { ... } }`
+- 400: invalid product, close time, or bid amount
+- 401: not logged in
+
+### GET /bids/scheduled/:id
+
+Returns one scheduled bid.
+
+### POST /bids/scheduled/:id/cancel
+
+Cancels a pending scheduled bid.
+
+Responses:
+
+- 200: `{ "bid": { ... } }`
+- 404: pending scheduled bid not found
+
 ## Returns
 
 ### POST /returns/:buyNowId

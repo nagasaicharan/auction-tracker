@@ -117,6 +117,112 @@ export async function testBid({ productId, bid, recaptchaToken }) {
   return data;
 }
 
+async function readJsonResponse(res, fallbackMessage) {
+  const text = await res.text();
+  let data = null;
+
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text ? { raw: text } : null;
+  }
+
+  if (!res.ok) {
+    const err = new Error(data?.error || data?.message || fallbackMessage);
+    err.payload = data;
+    throw err;
+  }
+
+  return data;
+}
+
+export async function fetchScheduledBids(status = 'all') {
+  const params = new URLSearchParams();
+  if (status && status !== 'all') params.set('status', status);
+  const query = params.toString();
+  const res = await fetch(`${API_BASE}/bids/scheduled${query ? `?${query}` : ''}`);
+  return readJsonResponse(res, 'Failed to fetch scheduled bids');
+}
+
+export async function fetchBidItem(productId) {
+  const res = await fetch(`${API_BASE}/bids/items/${encodeURIComponent(productId)}`);
+  return readJsonResponse(res, 'Failed to fetch auction item');
+}
+
+export async function createScheduledBid({ productId, title, imageUrl, closeTime, bidAmount }) {
+  const res = await fetch(`${API_BASE}/bids/scheduled`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ productId, title, imageUrl, closeTime, bidAmount }),
+  });
+  return readJsonResponse(res, 'Failed to schedule bid');
+}
+
+export async function cancelScheduledBid(id) {
+  const res = await fetch(`${API_BASE}/bids/scheduled/${id}/cancel`, { method: 'POST' });
+  return readJsonResponse(res, 'Failed to cancel scheduled bid');
+}
+
+export async function fetchSavedSearches() {
+  const res = await fetch(`${API_BASE}/saved-searches`);
+  return readJsonResponse(res, 'Failed to fetch saved searches');
+}
+
+export async function createSavedSearch(payload) {
+  const res = await fetch(`${API_BASE}/saved-searches`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return readJsonResponse(res, 'Failed to save search');
+}
+
+export async function updateSavedSearch(id, payload) {
+  const res = await fetch(`${API_BASE}/saved-searches/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return readJsonResponse(res, 'Failed to update saved search');
+}
+
+export async function markSavedSearchRun(id, resultCount = 0) {
+  const res = await fetch(`${API_BASE}/saved-searches/${id}/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resultCount }),
+  });
+  return readJsonResponse(res, 'Failed to update saved search run');
+}
+
+export async function deleteSavedSearch(id) {
+  const res = await fetch(`${API_BASE}/saved-searches/${id}`, { method: 'DELETE' });
+  if (!res.ok) return readJsonResponse(res, 'Failed to delete saved search');
+  return null;
+}
+
+export async function fetchLostAuctionLiveMatches({ limit = 100, locationName = '', onlyMatches = false } = {}) {
+  const params = new URLSearchParams({ limit });
+  if (locationName) params.set('locationName', locationName);
+  if (onlyMatches) params.set('onlyMatches', '1');
+  const res = await fetch(`${API_BASE}/lost-auctions/live-matches?${params}`);
+  return readJsonResponse(res, 'Failed to fetch lost auction matches');
+}
+
+export async function fetchLostRelistScanStatus() {
+  const res = await fetch(`${API_BASE}/lost-auctions/scan`);
+  return readJsonResponse(res, 'Failed to fetch lost relist scan status');
+}
+
+export async function startLostRelistScan({ locationName = '' } = {}) {
+  const res = await fetch(`${API_BASE}/lost-auctions/scan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ locationName }),
+  });
+  return readJsonResponse(res, 'Failed to start lost relist scan');
+}
+
 export async function searchItems(filters = {}) {
   const params = new URLSearchParams();
 

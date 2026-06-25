@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, TrendingUp, RefreshCw, Send, AlertCircle, ExternalLink } from 'lucide-react';
-import { searchItems, testBid } from '../api';
+import { Search, TrendingUp, RefreshCw, Send, AlertCircle, ExternalLink, Clock, Save } from 'lucide-react';
+import { createSavedSearch, createScheduledBid, searchItems, testBid } from '../api';
 
 const SORT_OPTIONS = [
   { value: 'valueMarginPercent', label: 'Best discount % (highest first)' },
@@ -108,7 +108,15 @@ function tagClassByKind(kind, value) {
   return 'bg-gray-100 text-gray-800 border-gray-300';
 }
 
-export default function SearchAuctionDashboard() {
+function suggestSearchName({ searchQuery, locationName, onlyOpen }) {
+  return [
+    locationName || 'Any location',
+    searchQuery || 'All items',
+    onlyOpen ? 'open' : 'all',
+  ].join(' · ');
+}
+
+export default function SearchAuctionDashboard({ preset = null }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [locationName, setLocationName] = useState('Delran');
   const [onlyOpen, setOnlyOpen] = useState(true);
@@ -123,10 +131,14 @@ export default function SearchAuctionDashboard() {
   const [error, setError] = useState(null);
   const [meta, setMeta] = useState({ total: 0, returnedAt: null });
   const [biddingId, setBiddingId] = useState(null);
+  const [schedulingId, setSchedulingId] = useState(null);
 
   const [bidDraftById, setBidDraftById] = useState({});
   const [bidStatusById, setBidStatusById] = useState({});
   const [selectedPhotoById, setSelectedPhotoById] = useState({});
+  const [saveName, setSaveName] = useState('');
+  const [savingSearch, setSavingSearch] = useState(false);
+  const [saveMessage, setSaveMessage] = useState(null);
 
   const activeFilters = useMemo(() => {
     const filters = {};
@@ -169,6 +181,21 @@ export default function SearchAuctionDashboard() {
   }, [loadItems]);
 
   useEffect(() => {
+    if (!preset) return;
+    const filters = preset.filters || {};
+    setSearchQuery(filters.search || '');
+    setLocationName(filters['Location Name'] || '');
+    setOnlyOpen(filters.MarketStatus === 'open');
+    setSortBy(preset.sortBy || 'valueMarginPercent');
+    setSecondarySortBy(preset.secondarySortBy || '');
+    setOnlyNoDamage(Boolean(preset.onlyNoDamage));
+    setOnlyMinorDamage(Boolean(preset.onlyMinorDamage));
+    setAutoRefresh(preset.autoRefresh !== false);
+    setPollSeconds(Math.max(5, Number(preset.pollSeconds) || 30));
+    setSaveName(preset.name || '');
+  }, [preset]);
+
+  useEffect(() => {
     if (!autoRefresh || pollSeconds < 5) return undefined;
     const handle = setInterval(() => {
       loadItems();
@@ -183,6 +210,31 @@ export default function SearchAuctionDashboard() {
 
   const setBidDraft = (productId, value) => {
     setBidDraftById((prev) => ({ ...prev, [productId]: value }));
+  };
+
+  const currentSearchPayload = useMemo(() => ({
+    name: saveName.trim() || suggestSearchName({ searchQuery, locationName, onlyOpen }),
+    filters: activeFilters,
+    sortBy,
+    secondarySortBy,
+    onlyNoDamage,
+    onlyMinorDamage,
+    autoRefresh,
+    pollSeconds,
+  }), [activeFilters, autoRefresh, locationName, onlyMinorDamage, onlyNoDamage, onlyOpen, pollSeconds, saveName, searchQuery, secondarySortBy, sortBy]);
+
+  const saveCurrentSearch = async () => {
+    setSavingSearch(true);
+    setSaveMessage(null);
+    try {
+      const result = await createSavedSearch(currentSearchPayload);
+      setSaveName(result.search.name);
+      setSaveMessage({ type: 'success', text: `Saved "${result.search.name}".` });
+    } catch (err) {
+      setSaveMessage({ type: 'error', text: err.message || 'Could not save search.' });
+    } finally {
+      setSavingSearch(false);
+    }
   };
 
   const submitBid = async (item) => {
@@ -228,6 +280,52 @@ export default function SearchAuctionDashboard() {
     } finally {
       setBiddingId(null);
       setBidDraftById((prev) => ({ ...prev, [productId]: '' }));
+    }
+  };
+
+  const scheduleBid = async (item) => {
+    const productId = item.id;
+    const raw = Number(bidDraftById[productId]);
+    if (!raw || Number.isNaN(raw)) {
+      setBidStatusById((prev) => ({ ...prev, [productId]: { type: 'error', message: 'Enter a numeric bid amount before scheduling.' } }));
+      return;
+    }
+
+    if (!item.closeTime) {
+      setBidStatusById((prev) => ({ ...prev, [productId]: { type: 'error', message: 'This item does not have a close time to schedule against.' } }));
+      return;
+    }
+
+    setSchedulingId(productId);
+    setBidStatusById((prev) => ({ ...prev, [productId]: { type: 'loading', message: 'Scheduling bid...' } }));
+
+    try {
+      const result = await createScheduledBid({
+        productId,
+        title: item.title,
+        imageUrl: item.image,
+        closeTime: item.closeTime,
+        bidAmount: raw,
+      });
+      setBidStatusById((prev) => ({
+        ...prev,
+        [productId]: {
+          type: 'success',
+          message: `Scheduled ${formatMoney(result.bid.bidAmount)} for ${formatTime(result.bid.scheduledFor)}.`,
+        },
+      }));
+      setBidDraftById((prev) => ({ ...prev, [productId]: '' }));
+    } catch (err) {
+      setBidStatusById((prev) => ({
+        ...prev,
+        [productId]: {
+          type: 'error',
+          message: err.message || 'Schedule failed',
+          payload: err.payload || null,
+        },
+      }));
+    } finally {
+      setSchedulingId(null);
     }
   };
 
@@ -294,6 +392,32 @@ export default function SearchAuctionDashboard() {
           </label>
         </div>
       </form>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col gap-3 md:flex-row md:items-end">
+        <label className="text-xs text-gray-600 flex-1">
+          Saved search name
+          <input
+            value={saveName}
+            onChange={(event) => setSaveName(event.target.value)}
+            placeholder={suggestSearchName({ searchQuery, locationName, onlyOpen })}
+            className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={saveCurrentSearch}
+          disabled={savingSearch}
+          className="h-10 px-4 text-sm bg-white text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 disabled:opacity-50 inline-flex items-center justify-center gap-2"
+        >
+          <Save size={15} />
+          {savingSearch ? 'Saving...' : 'Save search'}
+        </button>
+        {saveMessage ? (
+          <span className={`text-xs ${saveMessage.type === 'error' ? 'text-red-700' : 'text-emerald-700'}`}>
+            {saveMessage.text}
+          </span>
+        ) : null}
+      </div>
 
       <div className="flex flex-wrap items-center gap-3">
         <label className="text-xs text-gray-600">
@@ -510,13 +634,22 @@ export default function SearchAuctionDashboard() {
                   />
                   <button
                     type="submit"
-                    disabled={biddingId === item.id || item.canBid === false}
+                    disabled={biddingId === item.id || schedulingId === item.id || item.canBid === false}
                     className="px-3 py-2 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1"
                   >
                     <Send size={13} />
                     {biddingId === item.id ? 'Bidding…' : item.canBid === false ? 'Unavailable' : 'Bid'}
                   </button>
                 </form>
+                <button
+                  type="button"
+                  onClick={() => scheduleBid(item)}
+                  disabled={schedulingId === item.id || biddingId === item.id || item.canBid === false}
+                  className="w-full px-3 py-2 text-xs bg-white text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 disabled:opacity-50 inline-flex items-center justify-center gap-1"
+                >
+                  <Clock size={13} />
+                  {schedulingId === item.id ? 'Scheduling...' : 'Schedule for 29s left'}
+                </button>
 
                 <div className="text-xs min-h-5">
                   {bidStatusById[item.id]?.type === 'loading' && (

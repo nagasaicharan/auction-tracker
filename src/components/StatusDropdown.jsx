@@ -8,7 +8,7 @@ const STATUS_OPTIONS = [
   { value: 'sold_fb', label: 'Sold on FB', color: 'bg-emerald-100 text-emerald-800' },
 ];
 
-export function getStatusBadge(status) {
+function getStatusBadge(status) {
   return STATUS_OPTIONS.find(s => s.value === status) || STATUS_OPTIONS[0];
 }
 

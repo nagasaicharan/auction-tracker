@@ -10,6 +10,9 @@ import authRouter from './routes/auth.js';
 import appointmentsRouter from './routes/appointments.js';
 import bidsRouter from './routes/bids.js';
 import searchRouter from './routes/search.js';
+import savedSearchesRouter from './routes/savedSearches.js';
+import lostAuctionsRouter from './routes/lostAuctions.js';
+import { startScheduledBidWorker } from './scheduledBids.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -25,6 +28,8 @@ app.use('/api/auth', authRouter);
 app.use('/api/appointments', appointmentsRouter);
 app.use('/api/bids', bidsRouter);
 app.use('/api/search', searchRouter);
+app.use('/api/saved-searches', savedSearchesRouter);
+app.use('/api/lost-auctions', lostAuctionsRouter);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -40,4 +45,5 @@ if (process.env.NODE_ENV === 'production') {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://0.0.0.0:${PORT}`);
+  startScheduledBidWorker();
 });

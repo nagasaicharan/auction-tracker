@@ -122,10 +122,196 @@ export async function fetchSearchResults(cookies, query = {}) {
   }
 }
 
+export async function fetchLostAuctions(cookies, { page = 0, size = 20 } = {}) {
+  const paginationParam = encodeURIComponent(`s:${size},n:${page}`);
+  const url = `${NELLIS_WEB_BASE}/dashboard/auctions/lost?_p=${paginationParam}&_data=routes%2Fdashboard.auctions.lost`;
+  const res = await fetch(url, {
+    headers: {
+      ...DEFAULT_HEADERS,
+      accept: 'application/json',
+      'cookie': cookies,
+      'referer': `${NELLIS_WEB_BASE}/dashboard/auctions/lost`,
+    },
+  });
+  const text = await res.text();
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch lost auctions: ${res.status} - ${text.slice(0, 300)}`);
+  }
+
+  if (!text || text.trim().length === 0) {
+    throw new Error('Empty response from Nellis lost auctions API.');
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (text.includes('<html') || text.includes('<!DOCTYPE')) {
+      throw new Error('Nellis lost auctions endpoint returned HTML — session may be expired.');
+    }
+    throw new Error(`Invalid JSON from Nellis lost auctions: ${text.slice(0, 300)}`);
+  }
+}
+
+export async function fetchNellisSavedSearches(cookies, { size = 15, maxPages = 10 } = {}) {
+  const records = [];
+  let total = null;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const paginationParam = encodeURIComponent(`s:${size},n:${page}`);
+    const url = `${NELLIS_WEB_BASE}/dashboard/saved-searches?_p=${paginationParam}&_data=routes%2Fdashboard.saved-searches`;
+    const res = await fetch(url, {
+      headers: {
+        ...DEFAULT_HEADERS,
+        accept: 'application/json',
+        'cookie': cookies,
+        'referer': `${NELLIS_WEB_BASE}/dashboard/saved-searches`,
+      },
+    });
+    const text = await res.text();
+
+    if (!res.ok) {
+      throw new Error(`Failed to fetch saved searches: ${res.status} - ${text.slice(0, 300)}`);
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      if (text.includes('<html') || text.includes('<!DOCTYPE')) {
+        throw new Error('Nellis saved searches endpoint returned HTML — session may be expired.');
+      }
+      throw new Error(`Invalid JSON from Nellis saved searches: ${text.slice(0, 300)}`);
+    }
+
+    const pageData = data?.page || {};
+    const pageRecords = Array.isArray(pageData.records) ? pageData.records : [];
+    total = Number.isFinite(Number(pageData.total)) ? Number(pageData.total) : total;
+    records.push(...pageRecords.map(normalizeNellisSavedSearch).filter(Boolean));
+
+    if (!pageRecords.length || (total !== null && records.length >= total)) break;
+  }
+
+  return {
+    total: total ?? records.length,
+    records,
+  };
+}
+
 function parseCurrency(value) {
   if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
+  const parsed = typeof value === 'string'
+    ? Number(value.replace(/[^0-9.-]/g, ''))
+    : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== '');
+}
+
+function pickImage(rawItem) {
+  return rawItem?.photos?.[0]?.url
+    || rawItem?.imageUrl
+    || rawItem?.image_url
+    || rawItem?.image
+    || rawItem?.product?.photos?.[0]?.url
+    || null;
+}
+
+function findLikelyItemArrays(value, arrays = [], seen = new Set()) {
+  if (!value || typeof value !== 'object' || seen.has(value)) return arrays;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    const objectRows = value.filter((item) => item && typeof item === 'object');
+    const likelyRows = objectRows.filter((item) => (
+      item.title || item.product?.title || item.project?.title || item.productId || item.projectId || item.id
+    ));
+    if (likelyRows.length) arrays.push(value);
+    value.forEach((item) => findLikelyItemArrays(item, arrays, seen));
+    return arrays;
+  }
+
+  Object.values(value).forEach((child) => findLikelyItemArrays(child, arrays, seen));
+  return arrays;
+}
+
+export function extractLostAuctionItems(data) {
+  const candidates = [
+    data?.auctions,
+    data?.items,
+    data?.products,
+    data?.lostAuctions,
+    data?.lostItems,
+    data?.data?.auctions,
+    data?.data?.items,
+    data?.data?.products,
+    ...findLikelyItemArrays(data),
+  ].filter(Array.isArray);
+
+  const best = candidates
+    .map((rows) => rows.filter((item) => item && typeof item === 'object'))
+    .sort((a, b) => b.length - a.length)[0] || [];
+
+  return best.map(normalizeLostAuctionItem).filter(Boolean);
+}
+
+export function normalizeLostAuctionItem(rawItem) {
+  if (!rawItem || typeof rawItem !== 'object') return null;
+  const product = rawItem.product || rawItem.project || rawItem.item || rawItem;
+  const id = firstDefined(product.id, rawItem.productId, rawItem.projectId, rawItem.id);
+  const title = firstDefined(product.title, rawItem.title, rawItem.name);
+
+  if (!id && !title) return null;
+
+  const lastSoldPrice = parseCurrency(firstDefined(
+    rawItem.winningBidAmount,
+    rawItem.finalPrice,
+    rawItem.closePrice,
+    rawItem.soldPrice,
+    rawItem.currentPrice,
+    rawItem.amount,
+    product.currentPrice,
+  ));
+
+  return {
+    id: id || null,
+    title: title || 'Untitled',
+    inventoryNumber: firstDefined(product.inventoryNumber, rawItem.inventoryNumber) || null,
+    image: pickImage(rawItem),
+    lastSoldPrice,
+    closeTime: firstDefined(product.closeTime?.value, product.closeTime, rawItem.closeTime?.value, rawItem.closeTime) || null,
+    locationName: firstDefined(product.location?.name, rawItem.location?.name, rawItem.locationName) || null,
+  };
+}
+
+export function normalizeNellisSavedSearch(rawItem) {
+  if (!rawItem || typeof rawItem !== 'object' || !rawItem.searchText) return null;
+  const searchText = String(rawItem.searchText).trim();
+  if (!searchText) return null;
+
+  return {
+    id: `nellis-${rawItem.id}`,
+    source: 'nellis',
+    name: searchText,
+    filters: {
+      search: searchText,
+      MarketStatus: 'open',
+    },
+    sortBy: 'valueMarginPercent',
+    secondarySortBy: '',
+    onlyNoDamage: false,
+    onlyMinorDamage: false,
+    autoRefresh: true,
+    pollSeconds: 30,
+    readOnly: true,
+    nellisId: rawItem.id,
+    city: rawItem.city || null,
+    state: rawItem.state || null,
+    createdAt: rawItem.createdAt?.value || rawItem.createdAt || null,
+    updatedAt: rawItem.updatedAt?.value || rawItem.updatedAt || null,
+  };
 }
 
 export function normalizeSearchItem(rawItem) {

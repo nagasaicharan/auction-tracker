@@ -7,9 +7,11 @@ import AppointmentList from './components/AppointmentList';
 import SyncButton from './components/SyncButton';
 import LoginPage from './components/LoginPage';
 import TripAnalytics from './components/TripAnalytics';
-import { CalendarClock, Gavel, LogOut, Search, ShoppingCart } from 'lucide-react';
+import { Bookmark, CalendarClock, Gavel, LogOut, Search, ShoppingCart } from 'lucide-react';
 import BidPlayground from './components/BidPlayground';
 import SearchAuctionDashboard from './components/SearchAuctionDashboard';
+import ScheduledBids from './components/ScheduledBids';
+import SavedSearches from './components/SavedSearches';
 import { getAuthStatus, logout } from './api.js';
 
 function App() {
@@ -45,6 +47,7 @@ function App() {
 
 function MainApp({ onLogout }) {
   const [activeTab, setActiveTab] = useState('purchases');
+  const [searchPreset, setSearchPreset] = useState(null);
   const purchaseHook = usePurchases();
   const appointmentsHook = useAppointments();
 
@@ -64,6 +67,11 @@ function MainApp({ onLogout }) {
     loadSlots,
     reschedule,
   } = appointmentsHook;
+
+  const runSavedSearch = (search) => {
+    setSearchPreset({ ...search, runKey: Date.now() });
+    setActiveTab('search');
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -131,6 +139,28 @@ function MainApp({ onLogout }) {
             Search & Bid
           </button>
           <button
+            onClick={() => setActiveTab('saved-searches')}
+            className={`text-sm px-3 py-2 rounded-lg border flex items-center gap-1.5 transition-colors ${
+              activeTab === 'saved-searches'
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+            }`}
+          >
+            <Bookmark size={14} />
+            Saved Searches
+          </button>
+          <button
+            onClick={() => setActiveTab('scheduled-bids')}
+            className={`text-sm px-3 py-2 rounded-lg border flex items-center gap-1.5 transition-colors ${
+              activeTab === 'scheduled-bids'
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+            }`}
+          >
+            <CalendarClock size={14} />
+            Scheduled Bids
+          </button>
+          <button
             onClick={() => setActiveTab('bids')}
             className={`text-sm px-3 py-2 rounded-lg border flex items-center gap-1.5 transition-colors ${
               activeTab === 'bids'
@@ -195,7 +225,11 @@ function MainApp({ onLogout }) {
             />
           </>
         ) : activeTab === 'search' ? (
-          <SearchAuctionDashboard />
+          <SearchAuctionDashboard preset={searchPreset} />
+        ) : activeTab === 'saved-searches' ? (
+          <SavedSearches onRunSearch={runSavedSearch} />
+        ) : activeTab === 'scheduled-bids' ? (
+          <ScheduledBids />
         ) : (
           <BidPlayground />
         )}
