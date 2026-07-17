@@ -504,7 +504,7 @@ export default function SavedSearches({ onRunSearch }) {
                               className="w-full px-3 py-2 text-xs bg-white text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 disabled:opacity-50 inline-flex items-center justify-center gap-1"
                             >
                               <Clock size={13} />
-                              {schedulingId === match.id ? 'Scheduling...' : 'Schedule for 29s left'}
+                              {schedulingId === match.id ? 'Scheduling...' : 'Schedule for 4s left'}
                             </button>
                             {status ? (
                               <p className={`text-xs ${status.type === 'error' ? 'text-red-700' : 'text-emerald-700'}`}>

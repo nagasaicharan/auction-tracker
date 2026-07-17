@@ -2,8 +2,8 @@ import db from './db.js';
 import { getCookies } from './cookies.js';
 import { fetchProductDetail, normalizeSearchItem, placeBid } from './nellis.js';
 
-const BID_LEAD_TIME_MS = 29_000;
-const SCHEDULER_INTERVAL_MS = 5_000;
+const BID_LEAD_TIME_MS = 4_000;
+const SCHEDULER_INTERVAL_MS = 1_000;
 const ACTIVE_STATUSES = new Set(['pending']);
 
 let schedulerHandle = null;

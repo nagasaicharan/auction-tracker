@@ -648,7 +648,7 @@ export default function SearchAuctionDashboard({ preset = null }) {
                   className="w-full px-3 py-2 text-xs bg-white text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 disabled:opacity-50 inline-flex items-center justify-center gap-1"
                 >
                   <Clock size={13} />
-                  {schedulingId === item.id ? 'Scheduling...' : 'Schedule for 29s left'}
+                  {schedulingId === item.id ? 'Scheduling...' : 'Schedule for 4s left'}
                 </button>
 
                 <div className="text-xs min-h-5">

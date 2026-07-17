@@ -245,7 +245,7 @@ export default function ScheduledBids() {
                   className="w-full px-3 py-2 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 inline-flex items-center justify-center gap-1"
                 >
                   <Clock size={13} />
-                  {scheduling ? 'Scheduling...' : 'Schedule for 29s left'}
+                  {scheduling ? 'Scheduling...' : 'Schedule for 4s left'}
                 </button>
                 {item.canBid === false ? (
                   <p className="text-xs text-red-700">Nellis says bidding is unavailable for this item.</p>
